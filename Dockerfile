@@ -4,39 +4,34 @@
 # Builder stage — installs production dependencies only, on a fresh Node base.
 # =============================================================================
 
-# TODO(step-4a): set the builder base image as node:20.11-slim and name the stage "builder".
-FROM ??? AS ???
+FROM node:20-alpine AS builder
 #   Do NOT use `node:latest` — we want reproducible builds across the cohort.
 
 WORKDIR /app
 
-# TODO(step-4b): copy package.json and package-lock.json, then install deps.
-COPY ??? ???
-RUN ??? ??? --omit=dev
+COPY app/package.json app/package-lock.json ./
+RUN npm ci --omit=dev
 
-# TODO(step-4c): copy the rest of the app source into /app.
-COPY ??? ???
+COPY app/ ./
 
 # =============================================================================
 # Runtime stage — slim final image. Nothing from builder's caches leaks in.
 # =============================================================================
 
-# TODO(step-4d): set the runtime base image (same tag as step-4a for consistency).
-FROM ???
+FROM node:20-alpine
 
 WORKDIR /app
 
-# TODO(step-4e): copy the fully-installed app from the builder stage.
-COPY --from=??? ??? ???
+COPY --from=builder /app /app
+
+# npm isn't needed at runtime, and its bundled `tar` carries a CRITICAL CVE.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 ENV NODE_ENV=production
 EXPOSE 3000
 
-# TODO(step-4f): add a HEALTHCHECK that probes http://localhost:3000/health.
-#   IMPORTANT: `node:20.11-slim` does NOT ship with curl or wget.
-#   Use Node's built-in http module instead:
-??? --interval=10s --timeout=3s --start-period=5s --retries=5 \
+# node:20-alpine has no curl or wget, so probe /health with Node's http module.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
 CMD node -e "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"
 
-# TODO(step-4g): declare the container start command.
-CMD ["???", "???"]
+CMD ["node", "src/index.js"]
